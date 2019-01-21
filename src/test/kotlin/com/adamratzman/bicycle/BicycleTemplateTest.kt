@@ -22,14 +22,16 @@ class BicycleTemplateTest : Spek({
     describe("Template tests") {
         val bicycle = BicycleEngine()
         it("Render") {
+            var t = System.currentTimeMillis()
             bicycle.compileResourcesDirectory("templates")
+
             val template = bicycle.templates["index.bike"]!!
 
             val model = mapOf(
                 "condition" to true,
                 "name" to "Adam",
                 "condition2" to true,
-                "model" to TestClazz("f")
+                "model" to (1..5).map { TestClazz("test with string:  number $it") }
             )
 
             println(
@@ -67,7 +69,7 @@ class BicycleTemplateTest : Spek({
                     ),
                     BicycleWheelSkeleton(
                         engine,
-                        ResolveVariableWheel(), null,
+                        VariableResolverWheel(), null,
                         listOf(null to "test.transform(test2)"),
                         WheelValueMap(mapOf("allow-function-invocation" to true))
                     )

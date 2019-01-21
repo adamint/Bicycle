@@ -24,15 +24,58 @@ class NotWheel : WheelFunctionBlock("not", listOf(WheelArgument("value", listOf(
     }
 }
 
-class TemplateResolverWheel :
-    WheelFunctionBlock("template-resolver", listOf(WheelArgument("value", listOf(ParameterType.OBJECT), false))) {
+class WithWheel : WheelFunctionBlock("with", listOf(WheelArgument("value", listOf(ParameterType.OBJECT), true))) {
     override fun shouldRun(
         arguments: WheelValueMap,
         setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        return arguments["value"] != null
+    }
+
+    override fun render(arguments: WheelValueMap, innerTemplate: BicycleTemplate, context: BicycleContext): String {
+        val value = (arguments["value"] as Any)
+        val newVariables =
+            BicycleContext(value.javaClass.declaredFields.map { it.isAccessible = true; it.name to it.get(value) }.toMap())
+        val newContext = context + newVariables
+        return innerTemplate.render(newContext)
+    }
+
+}
+
+class EachWheel : WheelFunctionBlock("each", listOf(WheelArgument("value", listOf(ParameterType.LIST), true))) {
+    override fun shouldRun(
+        arguments: WheelValueMap,
+        setVariables: WheelValueMap,
+        innerTemplate: BicycleTemplate,
+        context: BicycleContext
+    ): Boolean {
+        return arguments["value"] != null
+    }
+
+    override fun render(arguments: WheelValueMap, innerTemplate: BicycleTemplate, context: BicycleContext): String {
+        val iterable = (arguments["value"] as? Array<*>)?.asIterable() ?: (arguments["value"] as List<*>)
+        return iterable.joinToString(lineSeparator) { value ->
+            val newVariables = BicycleContext(value?.let { _ ->
+                value.javaClass.declaredFields.map { it.isAccessible = true; it.name to it.get(value) }.toMap()
+            } ?: mapOf())
+            val newContext = context + newVariables
+            innerTemplate.render(newContext)
+        }
+    }
+}
+
+class TemplateResolverWheel :
+    WheelVariableBlock("template-resolver", listOf(WheelArgument("value", listOf(ParameterType.OBJECT), false))) {
+    override fun render(
+        arguments: WheelValueMap,
+        setVariables: WheelValueMap,
+        context: BicycleContext
+    ): Any? {
+        val value = arguments["value"] as? String
+        return if (value is String) (context.values["engine"] as BicycleEngine).templates[value]?.render(context)
+            ?: throw IllegalArgumentException("Unknown template referenced ($value)") else null
     }
 }
 
@@ -52,7 +95,7 @@ class EqualsWheel : WheelFunctionBlock(
     }
 }
 
-class ResolveVariableWheel : WheelVariableBlock(
+class VariableResolverWheel : WheelVariableBlock(
     "", listOf(
         WheelArgument("value", listOf(ParameterType.OBJECT), true),
         WheelArgument("show-null", listOf(ParameterType.BOOLEAN), true)

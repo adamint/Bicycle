@@ -1,5 +1,9 @@
 <h3 class="light uk-margin-remove-bottom">Hi, I'm {{name}}. I'm a linguistics and programming enthusiast.</h3>
-{{model.data}}
+{{#each model}}
+    {{data}}
+{{/each}}
+
+{{> "test-template.bike" }}
 {{#if condition}}
     <p>Condition true<p>
     {{condition}}

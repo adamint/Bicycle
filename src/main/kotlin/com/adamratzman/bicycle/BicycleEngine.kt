@@ -2,10 +2,20 @@ package com.adamratzman.bicycle
 
 import java.io.File
 
+internal val lineSeparator = System.getProperty("line.separator")
+
 class BicycleException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 class BicycleEngine(var globalContext: BicycleContext? = null) {
-    val wheels = mutableListOf(IfWheel(), NotWheel(), EqualsWheel(), ResolveVariableWheel())
+    val wheels = mutableListOf(
+        IfWheel(),
+        NotWheel(),
+        EqualsWheel(),
+        VariableResolverWheel(),
+        TemplateResolverWheel(),
+        EachWheel(),
+        WithWheel()
+    )
     val templates = mutableMapOf<String, BicycleTemplate>()
     private val parser = BicycleTemplateParser(this)
 

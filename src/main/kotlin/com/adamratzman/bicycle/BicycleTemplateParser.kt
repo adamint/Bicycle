@@ -8,7 +8,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
         while (temporaryString.indexOf("{{") != -1) {
             val left = firstIndexOf(temporaryString, "{{", '\\')
             if (left == -1) {
-                return BicycleTemplate(engine,templateSkeletons + BicycleTextSkeleton(temporaryString))
+                return BicycleTemplate(engine, templateSkeletons + BicycleTextSkeleton(temporaryString))
             }
             if (left > 0) {
                 templateSkeletons.add(BicycleTextSkeleton(temporaryString.substring(0, left)))
@@ -23,7 +23,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
             // find wheel
 
             val wheel = when {
-                wheelDefinitionString.indexOf(' ') == -1 -> engine.wheels.first { it.name == "" }
+                wheelDefinitionString.indexOf(' ') == -1 -> engine.wheels.first { it is VariableResolverWheel }
                 wheelDefinitionString.startsWith('#') -> engine.wheels.find {
                     it.name == wheelDefinitionString.substring(
                         1, wheelDefinitionString.indexOf(' ')
@@ -31,11 +31,18 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                 }?.apply {
                     wheelDefinitionString = wheelDefinitionString.substring(wheelDefinitionString.indexOf(' ') + 1)
                 } ?: throw IllegalArgumentException("No wheel found in {{$wheelDefinitionString}}")
-                wheelDefinitionString.startsWith(">") -> engine.wheels.first { it.name == "template-resolver" }
-                    .apply { wheelDefinitionString.removePrefix(">") }
+                wheelDefinitionString.startsWith(">") -> engine.wheels.first { it is TemplateResolverWheel }
+                    .apply { wheelDefinitionString = wheelDefinitionString.removePrefix(">") }
 
-                else -> engine.wheels.first { it.name == "" }
+                else -> {
+                    val split = wheelDefinitionString.split(" ")
+                    engine.wheels.first { it.name == split[0] }.apply {
+                        wheelDefinitionString = split.subList(1, split.size).joinToString(" ")
+                    }
+                }
             }
+
+            wheelDefinitionString = wheelDefinitionString.trim()
 
             // find arguments and set variables
             val arguments = mutableListOf<Pair<String?, Any?>>()
@@ -53,7 +60,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                 val char = wheelDefinitionString[index]
                 if (quoteLeft == null && char == '"') quoteLeft = index
                 else if (quoteLeft != null && char == '"') {
-                    arguments.add(null to wheelDefinitionString.substring(quoteLeft + 1, index))
+                    arguments.add(null to wheelDefinitionString.substring(quoteLeft, index + 1))
                     quoteLeft = null
                     start = index + 1
                 } else if (quoteLeft == null && char == ' ') {
@@ -92,14 +99,14 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                             }
                         } else throw IllegalArgumentException("Illegal variable setter: $wheelDefinitionString")
                     val name = wheelDefinitionString.substring(0, equalsIndex)
-
+                    if (name.toIntOrNull() != null) throw IllegalArgumentException("Variable names cannot be integers ($wheelDefinitionString)")
                     if (name in wheel.possibleArguments.map { it.name }) arguments.add(name to cast(value))
                     else setVariables[name] = cast(value)
                 }
             }
 
             if (wheel is WheelVariableBlock) {
-                templateSkeletons.add(BicycleWheelSkeleton(engine,wheel, null, arguments, WheelValueMap(setVariables)))
+                templateSkeletons.add(BicycleWheelSkeleton(engine, wheel, null, arguments, WheelValueMap(setVariables)))
                 temporaryString = temporaryString.substring(right + 2)
             } else {
                 val wheelEndBlock =
@@ -108,7 +115,11 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                     else temporaryString.lastIndexOf("{{/${wheel.name}}}")
                 if (wheelEndBlock == -1) throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})")
 
-                val innerTemplate = parse(temporaryString.substring(right + 2, wheelEndBlock))
+                val innerTemplate = parse(
+                    temporaryString.substring(right + 2, wheelEndBlock)
+                        .removePrefix(lineSeparator)
+                        .removeSuffix(lineSeparator)
+                )
 
                 templateSkeletons.add(
                     BicycleWheelSkeleton(
@@ -125,7 +136,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
             }
         }
 
-        return BicycleTemplate(engine,templateSkeletons + BicycleTextSkeleton(temporaryString))
+        return BicycleTemplate(engine, templateSkeletons + BicycleTextSkeleton(temporaryString))
     }
 
     private fun firstIndexOf(string: String, delimeter: String, avoidBefore: Char): Int {

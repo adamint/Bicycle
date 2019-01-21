@@ -47,7 +47,7 @@ class BicycleWheelConsumer(
     val context: BicycleContext
 ) {
     fun render(): String {
-        if (arguments.size > wheel.possibleArguments.size) throw IllegalArgumentException("Too many arguments specified")
+        if (arguments.size > wheel.possibleArguments.size) throw IllegalArgumentException("Too many arguments specified ($arguments to ${wheel.possibleArguments})")
 
         val foundArguments = mutableMapOf<WheelArgument, Any?>()
 
@@ -63,7 +63,7 @@ class BicycleWheelConsumer(
                     ?: throw IllegalArgumentException("No argument found matching the provided argument: $providedArgument")
             if (foundArguments.keys.find { it.name == matched.name } != null) throw IllegalArgumentException("Argument name ${matched.name} found twice")
             else foundArguments[matched] =
-                    if (wheel is ResolveVariableWheel) providedArgument.second else ResolveVariableWheel().render(
+                    if (wheel is VariableResolverWheel) providedArgument.second else VariableResolverWheel().render(
                         WheelValueMap(mapOf("value" to providedArgument.second)),
                         setVariables,
                         context
@@ -77,7 +77,8 @@ class BicycleWheelConsumer(
 
         foundArguments.forEach { arg, value ->
             val types = arg.takes
-            when (value) {
+            (if (OBJECT in arg.takes) null
+            else when (value) {
                 is List<*>, is Array<*> -> if (LIST !in arg.takes) "List or Array" else null
                 is Number -> {
                     if (NUMBER in arg.takes) null
@@ -88,24 +89,27 @@ class BicycleWheelConsumer(
                     else null
                 }
                 else -> {
-                    if (OBJECT in arg.takes) null
-                    else if (value is String && STRING !in arg.takes) "A String"
+                    if (value is String && STRING !in arg.takes) "A String"
                     else if (value is Boolean && BOOLEAN !in arg.takes) "A Boolean"
                     else null
                 }
-            }?.let { throw IllegalArgumentException("$it was found in $arg ($wheel), but one of $types was required. Value provided: $value") }
+            })?.let { throw IllegalArgumentException("$it was found in $arg ($wheel), but one of $types was required. Value provided: $value") }
         }
 
         val wheelArguments = WheelValueMap(foundArguments.mapKeys { it.key.name })
 
         return when (wheel) {
             is WheelVariableBlock -> {
-                wheel.renderInternal(WheelValueMap(wheelArguments.filter { it.value !is String || (it.value != "engine" && !(it.value as String).startsWith("engine."))}), setVariables, context)
+                wheel.renderInternal(WheelValueMap(wheelArguments.filter {
+                    it.value !is String || (it.value != "engine" && !(it.value as String).startsWith(
+                        "engine."
+                    ))
+                }), setVariables, context)
             }
             is WheelFunctionBlock -> {
                 if (wheel.shouldRun(
                         WheelValueMap(wheelArguments.map {
-                            it.key to ResolveVariableWheel().render(
+                            it.key to VariableResolverWheel().render(
                                 WheelValueMap(mapOf(it.key to it.value)),
                                 setVariables,
                                 context
@@ -160,7 +164,7 @@ abstract class WheelFunctionBlock(name: String, possibleArguments: List<WheelArg
         context: BicycleContext
     ): Boolean
 
-    fun render(
+    open fun render(
         arguments: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
