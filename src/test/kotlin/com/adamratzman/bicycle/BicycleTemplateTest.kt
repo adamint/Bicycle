@@ -25,7 +25,12 @@ class BicycleTemplateTest : Spek({
 
         it("Wheel definition parsing") {
             val parser = BicycleTemplateParser(bicycle)
-            println(parser.parseWheelDefinition(VariableResolverWheel(), "variable show-null=true other=\"hello world\""))
+            println(
+                parser.parseWheelDefinition(
+                    VariableResolverWheel(),
+                    "variable show-null=true other=\"hello world\""
+                )
+            )
         }
 
         it("Argument parsing") {
