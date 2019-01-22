@@ -20,10 +20,9 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
 
             var wheelDefinitionString = temporaryString.substring(left + 2, right).trim()
 
-            // find wheel
+            var raw = false
 
             val wheel = when {
-                wheelDefinitionString.indexOf(' ') == -1 -> engine.wheels.first { it is VariableResolverWheel }
                 wheelDefinitionString.startsWith('#') -> engine.wheels.find {
                     it.name == wheelDefinitionString.substring(
                         1, wheelDefinitionString.indexOf(' ')
@@ -35,85 +34,44 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                     .apply { wheelDefinitionString = wheelDefinitionString.removePrefix(">") }
 
                 else -> {
-                    val split = wheelDefinitionString.split(" ")
-                    engine.wheels.first { it.name == split[0] }.apply {
+                    val split = wheelDefinitionString.removePrefix("&").trim().split(" ")
+                    val found = engine.wheels.firstOrNull { it.name == split[0] }
+                    if (found != null) {
+                        if (found is WheelVariableBlock && wheelDefinitionString.startsWith("&")) raw = true
                         wheelDefinitionString = split.subList(1, split.size).joinToString(" ")
+                        found
+                    } else engine.wheels.first { it is VariableResolverWheel }.apply {
+                        if (this is WheelVariableBlock && wheelDefinitionString.startsWith("&")) raw = true
+                        wheelDefinitionString = split.joinToString(" ")
                     }
                 }
             }
 
             wheelDefinitionString = wheelDefinitionString.trim()
 
-            // find arguments and set variables
-            val arguments = mutableListOf<Pair<String?, Any?>>()
-            val setVariables = mutableMapOf<String, Any?>()
-
-            var start = 0
-            var index = 0
-            var quoteLeft: Int? = null
-            var lastSpace: Int? = null
-
-            val lastIndex = if (wheelDefinitionString.indexOf('=') == -1) wheelDefinitionString.length
-            else (wheelDefinitionString.indexOf('=')..0).firstOrNull { wheelDefinitionString[it] == ' ' } ?: 0
-
-            while (index < lastIndex) {
-                val char = wheelDefinitionString[index]
-                if (quoteLeft == null && char == '"') quoteLeft = index
-                else if (quoteLeft != null && char == '"') {
-                    arguments.add(null to wheelDefinitionString.substring(quoteLeft, index + 1))
-                    quoteLeft = null
-                    start = index + 1
-                } else if (quoteLeft == null && char == ' ') {
-                    arguments.add(null to cast(wheelDefinitionString.substring(lastSpace?.let { it + 1 } ?: 0, index)))
-                    start = index + 1
-                } else if (index == lastIndex - 1) {
-                    arguments.add(null to cast(wheelDefinitionString.substring(start)))
-                }
-                if (char == ' ') lastSpace = index
-                index++
-            }
-
-            if (wheelDefinitionString.lastIndex > lastIndex) {
-                // find variable setters & named arguments
-                wheelDefinitionString = wheelDefinitionString.substring(lastIndex + 1).trim()
-                while (wheelDefinitionString.isNotEmpty()) {
-                    val equalsIndex = wheelDefinitionString.indexOf('=')
-                    val value =
-                        if (equalsIndex > 0 && equalsIndex != wheelDefinitionString.lastIndex) {
-                            if (wheelDefinitionString[equalsIndex + 1] == '"') {
-                                if (wheelDefinitionString.indexOf(' ', equalsIndex + 2) != -1) {
-                                    val end = wheelDefinitionString.indexOf(' ', equalsIndex + 2)
-                                    wheelDefinitionString.substring(equalsIndex + 1, end).apply {
-                                        wheelDefinitionString = wheelDefinitionString.substring(end + 1)
-                                    }
-                                } else throw IllegalArgumentException("Unclosed quote: $wheelDefinitionString")
-                            } else if (wheelDefinitionString.indexOf(' ') == -1) {
-                                wheelDefinitionString.substring(equalsIndex + 1).apply {
-                                    wheelDefinitionString = ""
-                                }
-                            } else {
-                                val end = wheelDefinitionString.indexOf(' ')
-                                wheelDefinitionString.substring(equalsIndex + 1, end).apply {
-                                    wheelDefinitionString = wheelDefinitionString.substring(end + 1)
-                                }
-                            }
-                        } else throw IllegalArgumentException("Illegal variable setter: $wheelDefinitionString")
-                    val name = wheelDefinitionString.substring(0, equalsIndex)
-                    if (name.toIntOrNull() != null) throw IllegalArgumentException("Variable names cannot be integers ($wheelDefinitionString)")
-                    if (name in wheel.possibleArguments.map { it.name }) arguments.add(name to cast(value))
-                    else setVariables[name] = cast(value)
-                }
-            }
+            val (arguments, setVariables) = parseWheelDefinition(wheel, wheelDefinitionString)
+            if (raw) setVariables["noescape"] = true
 
             if (wheel is WheelVariableBlock) {
                 templateSkeletons.add(BicycleWheelSkeleton(engine, wheel, null, arguments, WheelValueMap(setVariables)))
                 temporaryString = temporaryString.substring(right + 2)
             } else {
-                val wheelEndBlock =
+                val sameWheelStartIndices = allIndexOf(temporaryString, "\\{\\{.*${wheel.name}.+}}".toRegex())
+                val sameWheelEndIndices = allIndexOf(temporaryString, "\\{\\{/${wheel.name}}}".toRegex())
+
+                val wheelEndBlock = sameWheelEndIndices.withIndex().firstOrNull { (index, value) ->
+                    index + 1 == sameWheelStartIndices.filter { it < value }.count()
+                }?.value
+                    ?: throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})")
+
+                //println("End index: $wheelEndBlock\nTemplate:\n$temporaryString")
+
+                /*val wheelEndBlock =
                     if (temporaryString.lastIndexOf("{{/${wheel.name}}}") == -1)
                         temporaryString.lastIndexOf("{{ /${wheel.name} }}")
                     else temporaryString.lastIndexOf("{{/${wheel.name}}}")
-                if (wheelEndBlock == -1) throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})")
+                throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})")
+                if (wheelEndBlock == -1) throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})") */
 
                 val innerTemplate = parse(
                     temporaryString.substring(right + 2, wheelEndBlock)
@@ -139,11 +97,112 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
         return BicycleTemplate(engine, templateSkeletons + BicycleTextSkeleton(temporaryString))
     }
 
-    private fun firstIndexOf(string: String, delimeter: String, avoidBefore: Char): Int {
-        val index = string.indexOf(delimeter)
+    private fun firstIndexOf(string: String, delimeter: String, avoidBefore: Char, start: Int = 0): Int {
+        val index = string.indexOf(delimeter, start)
         if (index < 1) return index
         if (string[index - 1] != avoidBefore) return index
-        return index + firstIndexOf(string.substring(index + 1), delimeter, avoidBefore)
+        return firstIndexOf(string, delimeter, avoidBefore, index + 1)
+    }
+
+    private fun allIndexOf(string: String, delimeter: Regex): List<Int> {
+        return delimeter.findAll(string).map { it.range.first }.toList()
+    }
+
+    fun parseWheelDefinition(wheel: Wheel, string: String): Pair<MutableMap<String, Any?>, MutableMap<String, Any?>> {
+        var pivotalEqualsIndex = -1
+        string.let { _ ->
+            var quote = false
+            for ((i, char) in string.withIndex()) {
+                if (string.getOrNull(i - 1) != '\\' && char == '"' && !quote) quote = true
+                else if (string.getOrNull(i - 1) != '\\' && char == '"' && quote) quote = false
+                else if (char == '=' && !quote) {
+                    pivotalEqualsIndex = i
+                    break
+                }
+            }
+        }
+
+        // no assignments
+        if (pivotalEqualsIndex == -1) return Pair(transformArguments(wheel, parseArguments(string), string), mutableMapOf())
+
+        val delinationIndex = string.substring(0, pivotalEqualsIndex).lastIndexOf(' ')
+
+        // no arguments
+        if (delinationIndex == -1) return Pair(mutableMapOf(), parseAssignments(string))
+
+        val argumentsString = string.substring(0, delinationIndex)
+        val assignmentsString = string.substring(delinationIndex + 1)
+
+        val arguments = transformArguments(wheel, parseArguments(argumentsString), string).toMutableMap()
+        val assignments = parseAssignments(assignmentsString).toMutableMap()
+
+        assignments.filter { (key) ->
+            wheel.possibleArguments.find { it.name == key } != null
+        }.forEach { key, value ->
+            assignments.remove(key)
+            arguments[wheel.possibleArguments.first { it.name == key }.name] = value
+        }
+
+        return Pair(arguments, assignments)
+    }
+
+    fun transformArguments(wheel: Wheel, list: List<Any?>, contextString: String) = list.mapIndexed { i, value ->
+        wheel.possibleArguments.getOrNull(i)?.let { it.name to value }
+            ?: throw IllegalArgumentException("Unknown argument $value in position $i ($contextString)")
+    }.toMap().toMutableMap()
+
+    fun parseArguments(string: String): List<Any?> {
+        val objects = mutableListOf<Any?>()
+        var mutable = string.trim()
+        while (mutable.isNotBlank()) {
+            if (mutable.startsWith('"')) {
+                val endQuoteIndex = firstIndexOf(mutable, "\"", '\\', 1)
+                if (endQuoteIndex == -1) throw IllegalArgumentException("String not closed: $string")
+                objects.add(mutable.substring(0, endQuoteIndex + 1).replace("\\\"", "\""))
+                mutable =
+                        if (endQuoteIndex == mutable.lastIndex) ""
+                        else mutable.substring(endQuoteIndex + 1).trimStart()
+            } else {
+                val spaceIndex = mutable.indexOf(' ')
+                mutable = if (spaceIndex == -1) {
+                    objects.add(cast(mutable))
+                    ""
+                } else {
+                    objects.add(cast(mutable.substring(0, spaceIndex)))
+                    mutable.substring(spaceIndex + 1)
+                }
+            }
+        }
+        return objects
+    }
+
+    fun parseAssignments(string: String): MutableMap<String, Any?> {
+        val objects = mutableMapOf<String, Any?>()
+        var mutable = string.trim()
+        while (mutable.isNotBlank()) {
+            val equals = mutable.indexOf('=')
+            if (equals == -1) throw IllegalArgumentException("Assignment has no equals sign ($mutable)")
+            val name = mutable.substring(0, equals)
+            if (name.toIntOrNull() != null) throw IllegalArgumentException("Assignment name ($name) cannot be an integer")
+            val valueStart = equals + 1
+            if (mutable[valueStart] == '"') {
+                val endQuote = firstIndexOf(mutable, "\"", '\\', valueStart + 1)
+                if (endQuote == -1) throw IllegalArgumentException("Quote has no end ($mutable)")
+                objects[name] = mutable.substring(valueStart, endQuote + 1)
+                mutable = if (endQuote == mutable.lastIndex) "" else mutable.substring(endQuote + 1).trimStart()
+            } else {
+                val spaceIndex = mutable.indexOf(' ')
+                if (spaceIndex == -1) {
+                    objects[name] = cast(mutable.substring(valueStart))
+                    mutable = ""
+                } else {
+                    objects[name] = cast(mutable.substring(valueStart, spaceIndex))
+                    mutable = mutable.substring(spaceIndex + 1)
+                }
+            }
+        }
+
+        return objects
     }
 }
 

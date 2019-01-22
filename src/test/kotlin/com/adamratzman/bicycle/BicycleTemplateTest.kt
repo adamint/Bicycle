@@ -21,22 +21,47 @@ data class TestClazz(val data: String) {
 class BicycleTemplateTest : Spek({
     describe("Template tests") {
         val bicycle = BicycleEngine()
+        bicycle.compileResourcesDirectory("templates")
+
+        it("Wheel definition parsing") {
+            val parser = BicycleTemplateParser(bicycle)
+            println(parser.parseWheelDefinition(VariableResolverWheel(), "variable show-null=true other=\"hello world\""))
+        }
+
+        it("Argument parsing") {
+            val parser = BicycleTemplateParser(bicycle)
+            println(parser.parseArguments("true \"this is \\\" a string\" false 4.0 model"))
+        }
+
+        it("Assignment parsing") {
+            val parser = BicycleTemplateParser(bicycle)
+            println(parser.parseAssignments("test=4 string=\"Hello world\" a=model"))
+        }
+
         it("Render") {
-            var t = System.currentTimeMillis()
-            bicycle.compileResourcesDirectory("templates")
 
-            val template = bicycle.templates["index.bike"]!!
+            val template = bicycle.templates["secondary/header.bike"]!!
 
-            val model = mapOf(
-                "condition" to true,
-                "name" to "Adam",
-                "condition2" to true,
-                "model" to (1..5).map { TestClazz("test with string:  number $it") }
-            )
+            val map = mutableMapOf<String, Any?>()
+            map["title"] = "Adam Ratzman | Home"
+            map["page"] = "home"
+            map["position-bottom"] = true
 
-            println(
-                template.render(model)
-            )
+            // meta
+            map["description"] = "Hi, I'm Adam. I'm a linguistics and programming enthusiast."
+
+            println(template.render(map))
+
+        }
+
+        it("Render 2") {
+            println(bicycle.templates.map { it.key })
+            val template = bicycle.templates["index-test.bike"]!!
+
+            val map = mutableMapOf<String, Any?>()
+            map["condition"] = true
+
+            println(template.render(map))
         }
 
 
@@ -58,19 +83,19 @@ class BicycleTemplateTest : Spek({
                         engine,
                         IfWheel(),
                         basicTextTemplate,
-                        listOf(Pair("value", true)),
+                        mapOf("value" to true),
                         WheelValueMap()
                     ),
                     BicycleWheelSkeleton(
                         engine,
                         DateRenderer(), null,
-                        listOf(null to System.currentTimeMillis()),
+                        mapOf("value" to System.currentTimeMillis()),
                         WheelValueMap(mapOf("offset" to -3))
                     ),
                     BicycleWheelSkeleton(
                         engine,
                         VariableResolverWheel(), null,
-                        listOf(null to "test.transform(test2)"),
+                        mapOf("value" to "test.transform(test2)"),
                         WheelValueMap(mapOf("allow-function-invocation" to true))
                     )
                 )

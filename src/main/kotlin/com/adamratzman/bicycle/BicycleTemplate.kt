@@ -1,6 +1,7 @@
 package com.adamratzman.bicycle
 
 import com.adamratzman.bicycle.ParameterType.*
+import org.apache.commons.text.StringEscapeUtils
 
 data class BicycleTemplate(val engine: BicycleEngine, val parts: List<BicycleTemplateSkeleton>) {
     fun render(model: Map<String, Any?>) = render(BicycleContext(WheelValueMap(model)))
@@ -31,7 +32,7 @@ class BicycleWheelSkeleton(
     val engine: BicycleEngine,
     val wheel: Wheel,
     val innerTemplate: BicycleTemplate?,
-    val arguments: List<Pair<String?, Any?>>,
+    val arguments: Map<String, Any?>,
     val setVariables: WheelValueMap
 ) : BicycleTemplateSkeleton() {
     fun render(context: BicycleContext) =
@@ -42,7 +43,7 @@ class BicycleWheelConsumer(
     val engine: BicycleEngine,
     val innerTemplate: BicycleTemplate?,
     val wheel: Wheel,
-    val arguments: List<Pair<String?, Any?>>,
+    val arguments: Map<String, Any?>,
     val setVariables: WheelValueMap,
     val context: BicycleContext
 ) {
@@ -51,9 +52,9 @@ class BicycleWheelConsumer(
 
         val foundArguments = mutableMapOf<WheelArgument, Any?>()
 
-        arguments.toMutableList().forEachIndexed { i, providedArgument ->
+        arguments.toList().forEachIndexed { i, providedArgument ->
             val matched =
-                providedArgument.first?.let { arg ->
+                providedArgument.first.let { arg ->
                     wheel.possibleArguments.find { it.name == arg }?.let { possible ->
                         if (providedArgument.second == null && !possible.nullable) throw IllegalArgumentException("$possible cannot be null (given $providedArgument)")
                         else possible
@@ -61,6 +62,7 @@ class BicycleWheelConsumer(
                 }
                     ?: wheel.possibleArguments.getOrNull(i)
                     ?: throw IllegalArgumentException("No argument found matching the provided argument: $providedArgument")
+
             if (foundArguments.keys.find { it.name == matched.name } != null) throw IllegalArgumentException("Argument name ${matched.name} found twice")
             else foundArguments[matched] =
                     if (wheel is VariableResolverWheel) providedArgument.second else VariableResolverWheel().render(
@@ -108,13 +110,7 @@ class BicycleWheelConsumer(
             }
             is WheelFunctionBlock -> {
                 if (wheel.shouldRun(
-                        WheelValueMap(wheelArguments.map {
-                            it.key to VariableResolverWheel().render(
-                                WheelValueMap(mapOf(it.key to it.value)),
-                                setVariables,
-                                context
-                            )
-                        }.toMap()),
+                        wheelArguments,
                         setVariables,
                         innerTemplate ?: BicycleTemplate(engine, listOf()),
                         context
@@ -145,7 +141,11 @@ abstract class WheelVariableBlock(name: String, possibleArguments: List<WheelArg
         arguments: WheelValueMap,
         setVariables: WheelValueMap,
         context: BicycleContext
-    ) = render(arguments, setVariables, context)?.toString() ?: ""
+    ): String {
+        return render(arguments, setVariables, context)?.toString()?.let { text ->
+            if (setVariables["noescape"] != true) StringEscapeUtils.escapeHtml4(text) else text
+        } ?: ""
+    }
 
     abstract fun render(
         arguments: WheelValueMap,
