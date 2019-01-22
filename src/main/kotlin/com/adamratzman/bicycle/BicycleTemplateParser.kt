@@ -64,20 +64,45 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                 }?.value
                     ?: throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})")
 
-                //println("End index: $wheelEndBlock\nTemplate:\n$temporaryString")
 
-                /*val wheelEndBlock =
-                    if (temporaryString.lastIndexOf("{{/${wheel.name}}}") == -1)
-                        temporaryString.lastIndexOf("{{ /${wheel.name} }}")
-                    else temporaryString.lastIndexOf("{{/${wheel.name}}}")
-                throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})")
-                if (wheelEndBlock == -1) throw IllegalArgumentException("Wheel end block needed for $temporaryString (${wheel.name})") */
+                val innerString = temporaryString.substring(right + 2, wheelEndBlock)
+                    .removePrefix(lineSeparator)
+                    .removeSuffix(lineSeparator)
 
-                val innerTemplate = parse(
-                    temporaryString.substring(right + 2, wheelEndBlock)
-                        .removePrefix(lineSeparator)
-                        .removeSuffix(lineSeparator)
-                )
+                val (innerTemplate, elseTemplate) =
+                        if (wheel is IfWheel || wheel is NotWheel) {
+                            val start = "\\{\\{#(if|not).+}}".toRegex()
+                            val end = "\\{\\{/(if|not)}}".toRegex()
+
+                            val startBlocks = start.findAll(innerString).map { it.range.first }.toList()
+                            val endBlocks = end.findAll(innerString).map { it.range.first }.toList()
+
+                            if (startBlocks.size != endBlocks.size) throw IllegalArgumentException("Differing amount of if/not start and end blocks")
+
+                            val ranges =
+                                startBlocks.mapIndexed { i, startIndex -> (startIndex..endBlocks[endBlocks.lastIndex - i]) }
+                            val elseBlocks =
+                                "\\{\\{else}}".toRegex().findAll(innerString).map { it.range.first }.toList()
+
+                            val matchingElse = elseBlocks.filter { elseStart -> ranges.none { elseStart in it } }
+                            when {
+                                matchingElse.size > 1 -> throw IllegalArgumentException("Multiple {{else}} blocks")
+                                matchingElse.isNotEmpty() -> {
+                                    val keyword = if (wheel is IfWheel) "not" else "if"
+
+                                    val ifText = innerString.substring(0, matchingElse[0])
+
+                                    val elseText =
+                                        "{{#$keyword ${arguments["value"]}}}${innerString.substring(
+                                            innerString.indexOf("}}", matchingElse[0]) + 2
+                                        )}\n{{/$keyword}}"
+                                    println("Rendered inside else:\nIf:\n$ifText\nElse:\n$elseText")
+                                    // {{else}} actually exists
+                                    parse(ifText) to (keyword to parse(elseText))
+                                }
+                                else -> parse(innerString) to null
+                            }
+                        } else parse(innerString) to null
 
                 templateSkeletons.add(
                     BicycleWheelSkeleton(
@@ -88,6 +113,18 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                         WheelValueMap(setVariables)
                     )
                 )
+
+                elseTemplate?.let { (keyword, template) ->
+                    templateSkeletons.add(
+                        BicycleWheelSkeleton(
+                            engine,
+                            if (keyword == "if") IfWheel() else NotWheel(),
+                            template,
+                            arguments,
+                            WheelValueMap(setVariables)
+                        )
+                    )
+                }
 
                 temporaryString = temporaryString.substring(0, left) +
                         temporaryString.substring(temporaryString.indexOf("}}", wheelEndBlock) + 2)
@@ -123,7 +160,10 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
         }
 
         // no assignments
-        if (pivotalEqualsIndex == -1) return Pair(transformArguments(wheel, parseArguments(string), string), mutableMapOf())
+        if (pivotalEqualsIndex == -1) return Pair(
+            transformArguments(wheel, parseArguments(string), string),
+            mutableMapOf()
+        )
 
         val delinationIndex = string.substring(0, pivotalEqualsIndex).lastIndexOf(' ')
 

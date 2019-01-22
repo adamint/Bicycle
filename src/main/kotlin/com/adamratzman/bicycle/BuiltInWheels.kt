@@ -91,7 +91,6 @@ class EqualsWheel : WheelFunctionBlock(
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
-        println("Equals: $arguments")
         return arguments["first"] == arguments["second"]
     }
 }

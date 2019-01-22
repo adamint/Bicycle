@@ -57,9 +57,9 @@ class BicycleTemplateTest : Spek({
         it("Render 2") {
             println(bicycle.templates.map { it.key })
             val template = bicycle.templates["index-test.bike"]!!
-
+            println((template.parts[template.parts.lastIndex - 1] as BicycleWheelSkeleton).innerTemplate)
             val map = mutableMapOf<String, Any?>()
-            map["condition"] = true
+            map["condition"] = false
 
             println(template.render(map))
         }
