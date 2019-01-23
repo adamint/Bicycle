@@ -96,7 +96,6 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                                         "{{#$keyword ${arguments["value"]}}}${innerString.substring(
                                             innerString.indexOf("}}", matchingElse[0]) + 2
                                         )}\n{{/$keyword}}"
-                                    println("Rendered inside else:\nIf:\n$ifText\nElse:\n$elseText")
                                     // {{else}} actually exists
                                     parse(ifText) to (keyword to parse(elseText))
                                 }
