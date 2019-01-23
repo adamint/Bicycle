@@ -37,7 +37,9 @@ class WithWheel : WheelFunctionBlock("with", listOf(WheelArgument("value", listO
     override fun render(arguments: WheelValueMap, innerTemplate: BicycleTemplate, context: BicycleContext): String {
         val value = (arguments["value"] as Any)
         val newVariables =
-            BicycleContext(value.javaClass.declaredFields.map { it.isAccessible = true; it.name to it.get(value) }.toMap())
+            BicycleContext(value.javaClass.declaredFields.map {
+                it.isAccessible = true; it.name to it.get(value)
+            }.toMap())
         val newContext = context + newVariables
         return innerTemplate.render(newContext)
     }
@@ -96,9 +98,10 @@ class EqualsWheel : WheelFunctionBlock(
 }
 
 class VariableResolverWheel : WheelVariableBlock(
-    "", listOf(
+    "variable-resolver", listOf(
         WheelArgument("value", listOf(ParameterType.OBJECT), true),
-        WheelArgument("show-null", listOf(ParameterType.BOOLEAN), true)
+        WheelArgument("show-null", listOf(ParameterType.BOOLEAN), true),
+        WheelArgument("allow-function-invocation", listOf(ParameterType.BOOLEAN), true)
     )
 ) {
     override fun render(arguments: WheelValueMap, setVariables: WheelValueMap, context: BicycleContext): Any? {

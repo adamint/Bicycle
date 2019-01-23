@@ -23,6 +23,13 @@ class BicycleTemplateTest : Spek({
         val bicycle = BicycleEngine()
         bicycle.compileResourcesDirectory("templates")
 
+        it("Wheel parsing") {
+            val parser = BicycleTemplateParser(bicycle)
+            println(
+                parser.parseWheel("!! test-template.bike")
+            )
+        }
+
         it("Wheel definition parsing") {
             val parser = BicycleTemplateParser(bicycle)
             println(
@@ -61,7 +68,7 @@ class BicycleTemplateTest : Spek({
 
         it("Render 2") {
             println(bicycle.templates.map { it.key })
-            val template = bicycle.templates["index-test.bike"]!!
+            val template = bicycle.templates["index-test.hbs"]!!
             println((template.parts[template.parts.lastIndex - 1] as BicycleWheelSkeleton).innerTemplate)
             val map = mutableMapOf<String, Any?>()
             map["condition"] = false

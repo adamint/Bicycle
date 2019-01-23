@@ -26,9 +26,9 @@ data class BicycleTemplate(val engine: BicycleEngine, val parts: List<BicycleTem
 
 abstract class BicycleTemplateSkeleton
 
-class BicycleTextSkeleton(val text: String) : BicycleTemplateSkeleton()
+data class BicycleTextSkeleton(val text: String) : BicycleTemplateSkeleton()
 
-class BicycleWheelSkeleton(
+data class BicycleWheelSkeleton(
     val engine: BicycleEngine,
     val wheel: Wheel,
     val innerTemplate: BicycleTemplate?,
@@ -39,7 +39,7 @@ class BicycleWheelSkeleton(
         BicycleWheelConsumer(engine, innerTemplate, wheel, arguments, setVariables, context).render()
 }
 
-class BicycleWheelConsumer(
+data class BicycleWheelConsumer(
     val engine: BicycleEngine,
     val innerTemplate: BicycleTemplate?,
     val wheel: Wheel,
@@ -175,4 +175,6 @@ data class WheelArgument(val name: String, val takes: List<ParameterType>, val n
 
 enum class ParameterType { BOOLEAN, STRING, NUMBER, INT, DOUBLE, FLOAT, LONG, LIST /* Includes both list and array */, OBJECT }
 
-class WheelValueMap(arguments: Map<String, Any?> = mapOf()) : HashMap<String, Any>(arguments)
+class WheelValueMap(arguments: Map<String, Any?> = mapOf()) : HashMap<String, Any>(arguments) {
+    constructor(vararg arguments: Pair<String, Any?>): this(mapOf(*arguments))
+}

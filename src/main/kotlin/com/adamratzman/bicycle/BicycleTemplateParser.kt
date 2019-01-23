@@ -15,42 +15,20 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                 temporaryString = temporaryString.substring(left)
                 continue
             }
+
             val right = firstIndexOf(temporaryString, "}}", '\\')
             if (right == -1 || left > right) throw IllegalArgumentException("Wheel beginning but no end")
 
             var wheelDefinitionString = temporaryString.substring(left + 2, right).trim()
 
-            var raw = false
-
-            val wheel = when {
-                wheelDefinitionString.startsWith('#') -> engine.wheels.find {
-                    it.name == wheelDefinitionString.substring(
-                        1, wheelDefinitionString.indexOf(' ')
-                    )
-                }?.apply {
-                    wheelDefinitionString = wheelDefinitionString.substring(wheelDefinitionString.indexOf(' ') + 1)
-                } ?: throw IllegalArgumentException("No wheel found in {{$wheelDefinitionString}}")
-                wheelDefinitionString.startsWith(">") -> engine.wheels.first { it is TemplateResolverWheel }
-                    .apply { wheelDefinitionString = wheelDefinitionString.removePrefix(">") }
-
-                else -> {
-                    val split = wheelDefinitionString.removePrefix("&").trim().split(" ")
-                    val found = engine.wheels.firstOrNull { it.name == split[0] }
-                    if (found != null) {
-                        if (found is WheelVariableBlock && wheelDefinitionString.startsWith("&")) raw = true
-                        wheelDefinitionString = split.subList(1, split.size).joinToString(" ")
-                        found
-                    } else engine.wheels.first { it is VariableResolverWheel }.apply {
-                        if (this is WheelVariableBlock && wheelDefinitionString.startsWith("&")) raw = true
-                        wheelDefinitionString = split.joinToString(" ")
-                    }
-                }
+            val wheel = parseWheel(wheelDefinitionString).let { (wheel, definition) ->
+                wheelDefinitionString = definition
+                wheel
             }
 
             wheelDefinitionString = wheelDefinitionString.trim()
 
             val (arguments, setVariables) = parseWheelDefinition(wheel, wheelDefinitionString)
-            if (raw) setVariables["noescape"] = true
 
             if (wheel is WheelVariableBlock) {
                 templateSkeletons.add(BicycleWheelSkeleton(engine, wheel, null, arguments, WheelValueMap(setVariables)))
@@ -240,9 +218,43 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                 }
             }
         }
-
         return objects
     }
+
+    fun parseWheel(string: String): Pair<Wheel, String> {
+        var wheelDefinition = string
+        val attributes = mutableListOf<WheelGrammar>()
+
+        var hasGrammar = true
+
+        while (hasGrammar) {
+            val match = WheelGrammar.values().firstOrNull { wheelDefinition.startsWith(it.representation) }
+            if (match != null) {
+                attributes.add(match)
+                wheelDefinition = wheelDefinition.removePrefix(match.representation).trimStart()
+            } else hasGrammar = false
+        }
+
+        attributes.forEach { attribute ->
+            attribute.replaceStart?.let { wheelDefinition = it + wheelDefinition }
+            attribute.replaceAfter?.let { wheelDefinition += it }
+        }
+
+        val foundWheel = engine.allWheels.firstOrNull { wheelDefinition.startsWith(it.name) }?.apply {
+            wheelDefinition = wheelDefinition.removePrefix(this.name).trim()
+        } ?: VariableResolverWheel()
+
+        return Pair(foundWheel, wheelDefinition)
+    }
+}
+
+internal enum class WheelGrammar(val representation: String, val replaceStart: String?, val replaceAfter: String?) {
+    RAW("&", null, " noescape=true"),
+    SHOW_NULL("?", null, " show-null=true"),
+    ALLOW_FUNCTION_INVOCATION("!!", null, " allow-function-invocation=true"),
+    NOT("^", "#not ", null),
+    TEMPLATE_RESOLVER(">", "template-resolver ", null),
+    WHEEL_FUNCTION_START("#", null, null)
 }
 
 internal fun cast(string: String): Any? {
