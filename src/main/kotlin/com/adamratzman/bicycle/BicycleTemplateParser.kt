@@ -28,10 +28,10 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
 
             wheelDefinitionString = wheelDefinitionString.trim()
 
-            val (arguments, setVariables) = parseWheelDefinition(wheel, wheelDefinitionString)
+            val arguments = parseWheelDefinition(wheel, wheelDefinitionString)
 
             if (wheel is WheelVariableBlock) {
-                templateSkeletons.add(BicycleWheelSkeleton(engine, wheel, null, arguments, WheelValueMap(setVariables)))
+                templateSkeletons.add(BicycleWheelSkeleton(engine, wheel, null, arguments))
                 temporaryString = temporaryString.substring(right + 2)
             } else {
                 val sameWheelStartIndices = allIndexOf(temporaryString, "\\{\\{.*${wheel.name}.+}}".toRegex())
@@ -86,8 +86,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                         engine,
                         wheel,
                         innerTemplate,
-                        arguments,
-                        WheelValueMap(setVariables)
+                        arguments
                     )
                 )
 
@@ -97,8 +96,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
                             engine,
                             if (keyword == "if") IfWheel() else NotWheel(),
                             template,
-                            arguments,
-                            WheelValueMap(setVariables)
+                            arguments
                         )
                     )
                 }
@@ -122,7 +120,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
         return delimeter.findAll(string).map { it.range.first }.toList()
     }
 
-    fun parseWheelDefinition(wheel: Wheel, string: String): Pair<MutableMap<String, Any?>, MutableMap<String, Any?>> {
+    fun parseWheelDefinition(wheel: Wheel, string: String): MutableMap<String, Any?> {
         var pivotalEqualsIndex = -1
         string.let { _ ->
             var quote = false
@@ -137,15 +135,12 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
         }
 
         // no assignments
-        if (pivotalEqualsIndex == -1) return Pair(
-            transformArguments(wheel, parseArguments(string), string),
-            mutableMapOf()
-        )
+        if (pivotalEqualsIndex == -1) return transformArguments(wheel, parseArguments(string), string)
 
         val delinationIndex = string.substring(0, pivotalEqualsIndex).lastIndexOf(' ')
 
         // no arguments
-        if (delinationIndex == -1) return Pair(mutableMapOf(), parseAssignments(string))
+        if (delinationIndex == -1) return parseAssignments(string)
 
         val argumentsString = string.substring(0, delinationIndex)
         val assignmentsString = string.substring(delinationIndex + 1)
@@ -160,7 +155,8 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
             arguments[wheel.possibleArguments.first { it.name == key }.name] = value
         }
 
-        return Pair(arguments, assignments)
+        assignments.putAll(arguments)
+        return assignments
     }
 
     fun transformArguments(wheel: Wheel, list: List<Any?>, contextString: String) = list.mapIndexed { i, value ->
@@ -251,7 +247,7 @@ class BicycleTemplateParser(val engine: BicycleEngine) {
 internal enum class WheelGrammar(val representation: String, val replaceStart: String?, val replaceAfter: String?) {
     RAW("&", null, " noescape=true"),
     SHOW_NULL("?", null, " show-null=true"),
-    ALLOW_FUNCTION_INVOCATION("!!", null, " allow-function-invocation=true"),
+    ALLOW_FUNCTION_INVOCATION("!!!", null, " allow-function-invocation=true"),
     NOT("^", "#not ", null),
     TEMPLATE_RESOLVER(">", "template-resolver ", null),
     WHEEL_FUNCTION_START("#", null, null)

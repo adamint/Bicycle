@@ -15,7 +15,6 @@ data class BicycleTemplate(val engine: BicycleEngine, val parts: List<BicycleTem
                     skeleton.innerTemplate,
                     skeleton.wheel,
                     skeleton.arguments,
-                    skeleton.setVariables,
                     context + BicycleContext("engine" to engine)
                 ).render()
             }
@@ -32,11 +31,10 @@ data class BicycleWheelSkeleton(
     val engine: BicycleEngine,
     val wheel: Wheel,
     val innerTemplate: BicycleTemplate?,
-    val arguments: Map<String, Any?>,
-    val setVariables: WheelValueMap
+    val arguments: Map<String, Any?>
 ) : BicycleTemplateSkeleton() {
     fun render(context: BicycleContext) =
-        BicycleWheelConsumer(engine, innerTemplate, wheel, arguments, setVariables, context).render()
+        BicycleWheelConsumer(engine, innerTemplate, wheel, arguments, context).render()
 }
 
 data class BicycleWheelConsumer(
@@ -44,13 +42,12 @@ data class BicycleWheelConsumer(
     val innerTemplate: BicycleTemplate?,
     val wheel: Wheel,
     val arguments: Map<String, Any?>,
-    val setVariables: WheelValueMap,
     val context: BicycleContext
 ) {
     fun render(): String {
-        if (arguments.size > wheel.possibleArguments.size) throw IllegalArgumentException("Too many arguments specified ($arguments to ${wheel.possibleArguments})")
+        if (arguments.size > wheel.possibleArguments.size) throw IllegalArgumentException("Too many arguments specified ($arguments) for $wheel")
 
-        val foundArguments = mutableMapOf<WheelArgument, Any?>()
+        val foundArguments  = mutableMapOf<WheelArgument, Any?>()
 
         arguments.toList().forEachIndexed { i, providedArgument ->
             val matched =
@@ -59,16 +56,12 @@ data class BicycleWheelConsumer(
                         if (providedArgument.second == null && !possible.nullable) throw IllegalArgumentException("$possible cannot be null (given $providedArgument)")
                         else possible
                     }
-                }
-                    ?: wheel.possibleArguments.getOrNull(i)
-                    ?: throw IllegalArgumentException("No argument found matching the provided argument: $providedArgument")
-
-            if (foundArguments.keys.find { it.name == matched.name } != null) throw IllegalArgumentException("Argument name ${matched.name} found twice")
+                } ?: throw IllegalArgumentException("No argument found matching the provided argument: $providedArgument")
+    
+            if (foundArguments.keys.find { it.name == matched.name } != null) throw IllegalArgumentException("Argument $providedArgument found twice ($arguments)")
             else foundArguments[matched] =
                     if (wheel is VariableResolverWheel) providedArgument.second else VariableResolverWheel().render(
-                        WheelValueMap(mapOf("value" to providedArgument.second)),
-                        setVariables,
-                        context
+                        WheelValueMap(mapOf("value" to providedArgument.second)), context
                     )
         }
 
@@ -106,12 +99,11 @@ data class BicycleWheelConsumer(
                     it.value !is String || (it.value != "engine" && !(it.value as String).startsWith(
                         "engine."
                     ))
-                }), setVariables, context)
+                }), context)
             }
             is WheelFunctionBlock -> {
                 if (wheel.shouldRun(
                         wheelArguments,
-                        setVariables,
                         innerTemplate ?: BicycleTemplate(engine, listOf()),
                         context
                     )
@@ -136,20 +128,18 @@ data class BicycleContext(val values: WheelValueMap) {
 abstract class Wheel(val name: String, val possibleArguments: List<WheelArgument>)
 
 abstract class WheelVariableBlock(name: String, possibleArguments: List<WheelArgument>) :
-    Wheel(name, possibleArguments) {
+    Wheel(name, possibleArguments + WheelArgument("noescape", listOf(BOOLEAN), true)) {
     internal fun renderInternal(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         context: BicycleContext
     ): String {
-        return render(arguments, setVariables, context)?.toString()?.let { text ->
-            if (setVariables["noescape"] != true) StringEscapeUtils.escapeHtml4(text) else text
+        return render(arguments, context)?.toString()?.let { text ->
+            if (arguments["noescape"] != true) StringEscapeUtils.escapeHtml4(text) else text
         } ?: ""
     }
 
     abstract fun render(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         context: BicycleContext
     ): Any?
 }
@@ -159,7 +149,6 @@ abstract class WheelFunctionBlock(name: String, possibleArguments: List<WheelArg
 
     abstract fun shouldRun(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean
@@ -176,5 +165,5 @@ data class WheelArgument(val name: String, val takes: List<ParameterType>, val n
 enum class ParameterType { BOOLEAN, STRING, NUMBER, INT, DOUBLE, FLOAT, LONG, LIST /* Includes both list and array */, OBJECT }
 
 class WheelValueMap(arguments: Map<String, Any?> = mapOf()) : HashMap<String, Any>(arguments) {
-    constructor(vararg arguments: Pair<String, Any?>): this(mapOf(*arguments))
+    constructor(vararg arguments: Pair<String, Any?>) : this(mapOf(*arguments))
 }

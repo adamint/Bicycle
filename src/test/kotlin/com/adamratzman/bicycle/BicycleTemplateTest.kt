@@ -6,9 +6,9 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 class DateRenderer : WheelVariableBlock("date", listOf(WheelArgument("date", listOf(ParameterType.LONG), false))) {
-    override fun render(arguments: WheelValueMap, setVariables: WheelValueMap, context: BicycleContext): Any {
+    override fun render(arguments: WheelValueMap, context: BicycleContext): Any {
         return Instant.ofEpochMilli(arguments["date"] as Long).let { instant ->
-            (setVariables["offset"] as? Int)?.let { instant.atOffset(ZoneOffset.ofHours(it)) } ?: instant
+            (arguments["offset"] as? Int)?.let { instant.atOffset(ZoneOffset.ofHours(it)) } ?: instant
         }.toString()
     }
 }
@@ -51,7 +51,6 @@ class BicycleTemplateTest : Spek({
         }
 
         it("Render") {
-
             val template = bicycle.templates["secondary/header.bike"]!!
 
             val map = mutableMapOf<String, Any?>()
@@ -69,9 +68,10 @@ class BicycleTemplateTest : Spek({
         it("Render 2") {
             println(bicycle.templates.map { it.key })
             val template = bicycle.templates["index-test.hbs"]!!
-            println((template.parts[template.parts.lastIndex - 1] as BicycleWheelSkeleton).innerTemplate)
             val map = mutableMapOf<String, Any?>()
             map["condition"] = false
+            map["model"] = (1..5).map { TestClazz("data") }
+            map["name"] = "A d a m"
 
             println(template.render(map))
         }
@@ -95,20 +95,17 @@ class BicycleTemplateTest : Spek({
                         engine,
                         IfWheel(),
                         basicTextTemplate,
-                        mapOf("value" to true),
-                        WheelValueMap()
+                        mapOf("value" to true)
                     ),
                     BicycleWheelSkeleton(
                         engine,
                         DateRenderer(), null,
-                        mapOf("value" to System.currentTimeMillis()),
-                        WheelValueMap(mapOf("offset" to -3))
+                        mapOf("value" to System.currentTimeMillis())
                     ),
                     BicycleWheelSkeleton(
                         engine,
                         VariableResolverWheel(), null,
-                        mapOf("value" to "test.transform(test2)"),
-                        WheelValueMap(mapOf("allow-function-invocation" to true))
+                        mapOf("value" to "test.transform(test2)")
                     )
                 )
             ).render(BicycleContext(WheelValueMap(mapOf("test2" to "4", "test" to TestClazz("hello world")))))

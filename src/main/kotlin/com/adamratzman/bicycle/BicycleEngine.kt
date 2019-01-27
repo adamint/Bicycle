@@ -52,29 +52,27 @@ class BicycleEngine(var globalContext: BicycleContext? = null) {
 
     fun addVariableWheel(
         name: String, vararg arguments: WheelArgument,
-        render: (WheelValueMap, WheelValueMap, BicycleContext) -> Any?
+        render: (WheelValueMap, BicycleContext) -> Any?
     ) {
         addWheel(object : WheelVariableBlock(name, arguments.toList()) {
             override fun render(
                 arguments: WheelValueMap,
-                setVariables: WheelValueMap,
                 context: BicycleContext
-            ) = render.invoke(arguments, setVariables, context)
+            ) = render.invoke(arguments, context)
         })
     }
 
     fun addFunctionWheel(
         name: String, vararg arguments: WheelArgument,
-        shouldRun: (WheelValueMap, WheelValueMap, BicycleTemplate, BicycleContext) -> Boolean,
+        shouldRun: (WheelValueMap, BicycleTemplate, BicycleContext) -> Boolean,
         render: ((WheelValueMap, BicycleTemplate, BicycleContext) -> String)? = null
     ) {
         addWheel(object : WheelFunctionBlock(name, arguments.toList()) {
             override fun shouldRun(
                 arguments: WheelValueMap,
-                setVariables: WheelValueMap,
                 innerTemplate: BicycleTemplate,
                 context: BicycleContext
-            ) = shouldRun(arguments, setVariables, innerTemplate, context)
+            ) = shouldRun(arguments, innerTemplate, context)
 
             override fun render(
                 arguments: WheelValueMap,

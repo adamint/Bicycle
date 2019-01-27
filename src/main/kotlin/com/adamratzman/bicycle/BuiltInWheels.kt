@@ -3,7 +3,6 @@ package com.adamratzman.bicycle
 class IfWheel : WheelFunctionBlock("if", listOf(WheelArgument("value", listOf(ParameterType.BOOLEAN), true))) {
     override fun shouldRun(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
@@ -15,7 +14,6 @@ class IfWheel : WheelFunctionBlock("if", listOf(WheelArgument("value", listOf(Pa
 class NotWheel : WheelFunctionBlock("not", listOf(WheelArgument("value", listOf(ParameterType.BOOLEAN), true))) {
     override fun shouldRun(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
@@ -27,7 +25,6 @@ class NotWheel : WheelFunctionBlock("not", listOf(WheelArgument("value", listOf(
 class WithWheel : WheelFunctionBlock("with", listOf(WheelArgument("value", listOf(ParameterType.OBJECT), true))) {
     override fun shouldRun(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
@@ -49,7 +46,6 @@ class WithWheel : WheelFunctionBlock("with", listOf(WheelArgument("value", listO
 class EachWheel : WheelFunctionBlock("each", listOf(WheelArgument("value", listOf(ParameterType.LIST), true))) {
     override fun shouldRun(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
@@ -62,7 +58,7 @@ class EachWheel : WheelFunctionBlock("each", listOf(WheelArgument("value", listO
             val newVariables = BicycleContext(value?.let { _ ->
                 value.javaClass.declaredFields.map { it.isAccessible = true; it.name to it.get(value) }.toMap()
             } ?: mapOf())
-            val newContext = context + newVariables
+            val newContext = context + newVariables + BicycleContext(Pair("this", value))
             innerTemplate.render(newContext)
         }
     }
@@ -72,7 +68,6 @@ class TemplateResolverWheel :
     WheelVariableBlock("template-resolver", listOf(WheelArgument("value", listOf(ParameterType.OBJECT), false))) {
     override fun render(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         context: BicycleContext
     ): Any? {
         val value = arguments["value"] as? String
@@ -89,7 +84,6 @@ class EqualsWheel : WheelFunctionBlock(
 ) {
     override fun shouldRun(
         arguments: WheelValueMap,
-        setVariables: WheelValueMap,
         innerTemplate: BicycleTemplate,
         context: BicycleContext
     ): Boolean {
@@ -104,7 +98,7 @@ class VariableResolverWheel : WheelVariableBlock(
         WheelArgument("allow-function-invocation", listOf(ParameterType.BOOLEAN), true)
     )
 ) {
-    override fun render(arguments: WheelValueMap, setVariables: WheelValueMap, context: BicycleContext): Any? {
+    override fun render(arguments: WheelValueMap, context: BicycleContext): Any? {
         val value = arguments["value"]
         val resolvedObject =
             if (arguments["value"] !is String) arguments["value"]
@@ -126,7 +120,7 @@ class VariableResolverWheel : WheelVariableBlock(
                                 currentObject = field.get(it)
                             }
                         } catch (e: Exception) {
-                            if (setVariables["allow-function-invocation"] == true)
+                            if (arguments["allow-function-invocation"] == true) {
                                 try {
                                     if (name.indexOf('(') != -1 && name.indexOf(')') != -1) {
                                         val methodName = name.substring(0, name.indexOf('('))
@@ -136,7 +130,6 @@ class VariableResolverWheel : WheelVariableBlock(
                                                     .filter { it.isNotBlank() }.map { it.trim() }.map { param ->
                                                         render(
                                                             WheelValueMap(mapOf("value" to param)),
-                                                            setVariables,
                                                             context
                                                         )
                                                     }.toTypedArray()
@@ -157,6 +150,7 @@ class VariableResolverWheel : WheelVariableBlock(
                                     )
                                     currentObject = null
                                 }
+                            }
                         }
                     }
                     currentObject
